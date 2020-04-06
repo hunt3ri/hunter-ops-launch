@@ -1,10 +1,16 @@
 version: 2.1
-# Test again
-jobs:
-  build:
+
+# Use terraform-packer docker image to execute all jobs within
+executors:
+  terraform:
     docker:
       - image: hunteri/terraform-packer:latest
-        user: root
+
+
+jobs:
+  # Configure terraform with access to AWS and download global vars from System Manager
+  configure_terraform:
+    executor: terraform
     steps:
       - checkout
       - run:
@@ -30,12 +36,38 @@ jobs:
             . ./setenv.sh hunter_ops_prod
             chmod +x ./utils/tfinit
       - run:
+          name: Test it
+          command: |
+            pwd
+            ls
+      - persist_to_workspace:
+          root: /
+          paths:
+            - root/.aws
+            - root/project/hunter-ops
+
+  # Create AWS VPC for apps to run on
+  create_vpc:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
           name: Create vpc
           command: |
             . ./hunter-ops/ops/utils/terraform.tfvars.sh
             cd ./hunter-ops/ops/terraform/global/vpc
             /root/project/hunter-ops/ops/utils/tfinit
             terraform apply -auto-approve
+
+  # Creates the Flask Bootstrap ASG and installs working application within it
+  create_flask_bootstrap_asg:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
       - run:
           name: Create Flask-Bootstrap ASG
           command: |
@@ -44,3 +76,15 @@ jobs:
             /root/project/hunter-ops/ops/utils/tfinit
             terraform apply -auto-approve
 
+workflows:
+  version: 2
+
+  infrastructure:
+    jobs:
+      - configure_terraform
+      - create_vpc:
+          requires:
+            - configure_terraform
+      - create_flask_bootstrap_asg:
+          requires:
+            - create_vpc
