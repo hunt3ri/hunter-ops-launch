@@ -6,9 +6,22 @@ executors:
     docker:
       - image: hunteri/terraform-packer:latest
 
+# Parameters can be supplied from API to create and destroy infrastructure
+parameters:
+  terraform-apply:
+    type: boolean
+    default: false
+  terraform-destroy:
+    type: boolean
+    default: false
 
 jobs:
-  # Configure terraform with access to AWS and download global vars from System Manager
+
+  ###################################
+  # configure_terraform workflow
+  ###################################
+
+  # Set AWS creds and download global vars from System Manager
   configure_terraform:
     executor: terraform
     steps:
@@ -46,6 +59,10 @@ jobs:
             - root/.aws
             - root/project/hunter-ops
 
+  ###################################
+  # create_infrastructure workflow
+  ###################################
+
   # Create AWS VPC for apps to run on
   create_vpc:
     executor: terraform
@@ -76,10 +93,60 @@ jobs:
             /root/project/hunter-ops/ops/utils/tfinit
             terraform apply -auto-approve
 
+  ###################################
+  # destroy_infrastructure workflow
+  ###################################
+
+  destroy_flask_bootstrap_asg:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
+          name: Destroy Flask Bootstrap ASG
+          command: |
+            . ./hunter-ops/ops/utils/terraform.tfvars.sh
+            cd ./hunter-ops/ops/terraform/middleware/flask_bootstrap_api
+            /root/project/hunter-ops/ops/utils/tfinit
+            terraform destroy -auto-approve
+
+  destroy_vpc:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
+          name: Destroy vpc
+          command: |
+            . ./hunter-ops/ops/utils/terraform.tfvars.sh
+            cd ./hunter-ops/ops/terraform/global/vpc
+            /root/project/hunter-ops/ops/utils/tfinit
+            terraform destroy -auto-approve
+
+  # Creates a small message used to stop errors if nothing to build
+  welcome:
+    docker:
+      - image: alpine:latest
+    steps:
+      - run:
+          name: Hunter-Labs
+          command: |
+            echo "Hunter-Labs running"
+
 workflows:
   version: 2
 
-  infrastructure:
+  # Stops build errors if nothing specified to run
+  hunter_labs:
+    when: always
+    jobs:
+      - welcome
+
+  # Create all config and infrastructure to run the app on
+  create_infrastructure:
+    when: << pipeline.parameters.terraform-apply >>
     jobs:
       - configure_terraform
       - create_vpc:
@@ -88,3 +155,16 @@ workflows:
       - create_flask_bootstrap_asg:
           requires:
             - create_vpc
+
+  # Destroy all config and infrastructure to run the app on
+  delete_infrastructure:
+    when: << pipeline.parameters.terraform-destroy >>
+    jobs:
+      - configure_terraform
+      - destroy_flask_bootstrap_asg:
+          requires:
+            - configure_terraform
+      - destroy_vpc:
+          requires:
+            - destroy_flask_bootstrap_asg
+
