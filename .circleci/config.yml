@@ -93,6 +93,34 @@ jobs:
             /root/project/hunter-ops/ops/utils/tfinit
             terraform apply -auto-approve
 
+  create_postgres_rds:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
+          name: Create Postgres RDS
+          command: |
+            . ./hunter-ops/ops/utils/terraform.tfvars.sh
+            cd ./hunter-ops/ops/terraform/global/rds
+            /root/project/hunter-ops/ops/utils/tfinit
+            terraform apply -auto-approve
+
+  create_flask_bootstrap_db:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
+          name: Create Flask Bootstrap DB
+          command: |
+            . ./hunter-ops/ops/utils/terraform.tfvars.sh
+            cd ./hunter-ops/ops/terraform/middleware/flask_bootstrap_api/postgres
+            /root/project/hunter-ops/ops/utils/tfinit
+            terraform apply -auto-approve
+
   ###################################
   # destroy_infrastructure workflow
   ###################################
@@ -108,6 +136,20 @@ jobs:
           command: |
             . ./hunter-ops/ops/utils/terraform.tfvars.sh
             cd ./hunter-ops/ops/terraform/middleware/flask_bootstrap_api
+            /root/project/hunter-ops/ops/utils/tfinit
+            terraform destroy -auto-approve
+
+  destroy_postgres_rds:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
+          name: Destroy Postgres RDS
+          command: |
+            . ./hunter-ops/ops/utils/terraform.tfvars.sh
+            cd ./hunter-ops/ops/terraform/global/rds
             /root/project/hunter-ops/ops/utils/tfinit
             terraform destroy -auto-approve
 
@@ -155,6 +197,12 @@ workflows:
       - create_flask_bootstrap_asg:
           requires:
             - create_vpc
+      - create_postgres_rds:
+          requires:
+            - create_vpc
+      - create_flask_bootstrap_db:
+          requires:
+            - create_postgres_rds
 
   # Destroy all config and infrastructure to run the app on
   delete_infrastructure:
@@ -164,7 +212,11 @@ workflows:
       - destroy_flask_bootstrap_asg:
           requires:
             - configure_terraform
+      - destroy_postgres_rds:
+          requires:
+            - configure_terraform
       - destroy_vpc:
           requires:
             - destroy_flask_bootstrap_asg
+            - destroy_postgres_rds
 
