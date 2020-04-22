@@ -167,6 +167,20 @@ jobs:
             /root/project/hunter-ops/ops/utils/tfinit
             terraform destroy -auto-approve
 
+  destroy_flask_bootstrap_db:
+    executor: terraform
+    steps:
+      # Attach to workspace defined in configure_terraform step
+      - attach_workspace:
+          at: /
+      - run:
+          name: Create Flask Bootstrap DB
+          command: |
+            . ./hunter-ops/ops/utils/terraform.tfvars.sh
+            cd ./hunter-ops/ops/terraform/middleware/flask_bootstrap_api/postgres
+            /root/project/hunter-ops/ops/utils/tfinit
+            terraform destroy -auto-approve
+
   # Creates a small message used to stop errors if nothing to build
   welcome:
     docker:
@@ -215,8 +229,10 @@ workflows:
       - destroy_postgres_rds:
           requires:
             - configure_terraform
+      - destroy_flask_bootstrap_db:
+          requires:
+            - configure_terraform
       - destroy_vpc:
           requires:
             - destroy_flask_bootstrap_asg
             - destroy_postgres_rds
-
