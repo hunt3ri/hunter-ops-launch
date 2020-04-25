@@ -208,12 +208,12 @@ workflows:
       - create_vpc:
           requires:
             - configure_terraform
-      - create_flask_bootstrap_asg:
-          requires:
-            - create_vpc
       - create_postgres_rds:
           requires:
             - create_vpc
+      - create_flask_bootstrap_asg:
+          requires:
+            - create_postgres_rds
       - create_flask_bootstrap_db:
           requires:
             - create_postgres_rds
